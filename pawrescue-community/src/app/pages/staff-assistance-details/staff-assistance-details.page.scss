@@ -394,6 +394,49 @@ ion-content.staff-details-content {
   line-height: 1.4;
 }
 
+// ============================================================
+// FIT-TO-SCREEN ANIMAL PHOTO VIEWER
+// ============================================================
+// Matches the photo overlay in the updated compact HTML.
+// Keep the full image visible; never crop or stretch its aspect ratio.
+
+.details-photo-viewer {
+  width: 100%;
+  height: 100vh; // Fallback for older WebViews.
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(0, 0, 0, 0.94);
+}
+
+.details-photo-viewer-image {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 4px;
+}
+
+.details-photo-viewer-close {
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 68px;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.24);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  &:focus-visible {
+    outline: 3px solid #98dfb3;
+    outline-offset: 3px;
+  }
+}
+
 // Used for assistance details, report status, and reporter/timeline rows.
 .details-info-list {
   display: block;
@@ -486,6 +529,12 @@ ion-content.staff-details-content {
 
   ion-icon { flex: 0 0 auto; font-size: 17px; }
   &:active { color: var(--case-green-deep); }
+}
+
+// Disabled while the case is refreshing or saving.
+.details-location-map-link:disabled {
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 // ============================================================
@@ -717,6 +766,150 @@ ion-content.staff-details-content {
     color: #728477;
     background: #e9f0eb;
     cursor: not-allowed;
+  }
+}
+
+// ============================================================
+// RESCUE COMPLETION: PROOF PICKER AND SAVED EVIDENCE
+// ============================================================
+// These rules style only the rescue elements added to Case Details.
+// Existing status/save controls, map, and photo viewers are unchanged.
+
+.details-rescue-proof-field {
+  padding: 13px;
+  border: 1px solid #cfe5d5;
+  border-radius: 12px;
+  background: #f7fbf8;
+
+  > label span { color: #b13f35; }
+
+  > .details-field-hint {
+    margin-bottom: 10px;
+  }
+
+  // Keep the file input visible for gallery/file selection on Android.
+  input[type='file'] {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-height: 45px;
+    padding: 8px;
+    border: 1px dashed #a8c9b4;
+    border-radius: 10px;
+    color: var(--case-text);
+    background: #fff;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+
+    &::file-selector-button {
+      min-height: 32px;
+      margin-right: 9px;
+      padding: 5px 10px;
+      border: 1px solid #b8d9c4;
+      border-radius: 8px;
+      color: var(--case-green-deep);
+      background: var(--case-green-soft);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    &:focus-visible {
+      outline: 3px solid rgba(31, 115, 81, 0.25);
+      outline-offset: 2px;
+    }
+
+    &:disabled { opacity: 0.6; cursor: not-allowed; }
+  }
+}
+
+.details-rescue-camera-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  margin-top: 10px;
+  padding: 9px 13px;
+  border-color: #b8d9c4;
+  color: var(--case-green-deep);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 750;
+
+  &:active:not(:disabled) { background: var(--case-green-soft); }
+  &:focus-visible {
+    outline: 3px solid rgba(31, 115, 81, 0.3);
+    outline-offset: 2px;
+  }
+}
+
+.details-rescue-proof-preview {
+  min-width: 0;
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid var(--case-border);
+  border-radius: 12px;
+  background: #fff;
+
+  img {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 230px;
+    margin: 0 auto;
+    border-radius: 9px;
+    object-fit: contain;
+    object-position: center;
+  }
+
+  .details-field-hint { margin: 9px 0; }
+
+  // Remove is a secondary action, not the main Save button.
+  .details-retry-button { margin-top: 2px; }
+}
+
+.details-rescue-record {
+  border-color: #c4e2ce;
+
+  // Notes use normal wrapping instead of clipping long rescue details.
+  .details-info-row dd.details-paragraph {
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+}
+
+.details-rescue-proof-display {
+  margin-top: 13px;
+  padding-top: 13px;
+  border-top: 1px solid var(--case-border);
+
+  .details-muted-text { margin-top: 7px; }
+}
+
+.details-rescue-proof-label {
+  margin: 0 0 9px;
+  color: var(--case-dark);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.details-rescue-proof-button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--case-border);
+  background: #f4f8f5;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+
+  &:focus-visible {
+    outline: 3px solid rgba(31, 115, 81, 0.3);
+    outline-offset: 3px;
   }
 }
 

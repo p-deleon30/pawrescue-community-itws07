@@ -1,13 +1,16 @@
 <!-- =====================================================
-     PAWCONNECT — L VETERINARY OFFICE
+     PAWRESCUE COMMUNITY — MUNICIPAL VETERINARY OFFICE
      Staff Dashboard (mobile-first)
 
      Companion files:
        staff-dashboard.page.ts
        staff-dashboard.page.scss
 
-     Staff-only routing must be protected by staffGuard.
-     Animal Assistance list/details routes will be added later.
+     Staff-only routing is protected by staffGuard.
+     Animal Assistance list/details routes are already implemented.
+
+     Statistics align with the Pending -> Rescued workflow.
+     Historical includes older statuses, not rescued cases.
      ===================================================== -->
 
 <ion-content [fullscreen]="true" class="staff-dashboard-content">
@@ -20,8 +23,8 @@
           <ion-icon name="paw-outline"></ion-icon>
         </span>
         <div class="staff-brand-copy">
-          <p class="staff-brand-name">PawConnect</p>
-          <p class="staff-brand-subtitle">Veterinary Office</p>
+          <p class="staff-brand-name">PawRescue Community</p>
+          <p class="staff-brand-subtitle">Municipal Veterinary Office</p>
         </div>
       </div>
       <span class="staff-role-tag">Staff Portal</span>
@@ -93,24 +96,26 @@
         <span class="staff-stat-label">Pending</span>
       </div>
 
-      <div class="staff-stat-card progress">
-        <span class="staff-stat-icon" aria-hidden="true">
-          <ion-icon name="pulse-outline"></ion-icon>
-        </span>
-        <strong class="staff-stat-number" aria-label="Cases in progress">
-          {{ counts.inProgress === null ? '—' : counts.inProgress }}
-        </strong>
-        <span class="staff-stat-label">In Progress</span>
-      </div>
-
-      <div class="staff-stat-card resolved">
+      <!-- Keep the existing resolved style for the completed/rescued statistic. -->
+      <div class="staff-stat-card resolved rescued">
         <span class="staff-stat-icon" aria-hidden="true">
           <ion-icon name="checkmark-circle-outline"></ion-icon>
         </span>
-        <strong class="staff-stat-number" aria-label="Resolved cases">
-          {{ counts.resolved === null ? '—' : counts.resolved }}
+        <strong class="staff-stat-number" aria-label="Rescued cases">
+          {{ counts.rescued === null ? '—' : counts.rescued }}
         </strong>
-        <span class="staff-stat-label">Resolved</span>
+        <span class="staff-stat-label">Rescued</span>
+      </div>
+
+      <!-- Legacy statuses: Under Review, In Progress, and Resolved. -->
+      <div class="staff-stat-card progress historical">
+        <span class="staff-stat-icon" aria-hidden="true">
+          <ion-icon name="pulse-outline"></ion-icon>
+        </span>
+        <strong class="staff-stat-number" aria-label="Historical cases">
+          {{ counts.historical === null ? '—' : counts.historical }}
+        </strong>
+        <span class="staff-stat-label">Historical Cases</span>
       </div>
     </section>
 
@@ -229,7 +234,7 @@
 
     <footer class="staff-dashboard-footer">
       <ion-icon name="paw-outline" aria-hidden="true"></ion-icon>
-      PawConnect ·  Veterinary Office
+      PawRescue Community · Municipal Veterinary Office
     </footer>
   </main>
 </ion-content>

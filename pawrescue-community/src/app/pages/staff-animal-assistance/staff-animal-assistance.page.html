@@ -1,10 +1,10 @@
 <!-- ============================================================
-     PAWCONNECT — VETERINARY OFFICE
+     PAWCONNECT — MUNICIPAL VETERINARY OFFICE
      Animal Assistance Management: staff-only case listing
 
      Companion files:
        staff-animal-assistance.page.ts
-       staff-animal-assistance.page.scss (next implementation step)
+       staff-animal-assistance.page.scss
 
      Cases originate from resident Found Pet reports marked
      "Needs Assistance". This is NOT a resident reporting form.
@@ -62,7 +62,8 @@
       </span>
     </div>
 
-    <!-- Status filters; button semantics support touch and keyboard -->
+    <!-- Active workflow filters come from TypeScript: All Cases / Pending / Rescued.
+         Historical cases remain visible under All Cases. -->
     <div class="assistance-filters" role="group" aria-label="Filter assistance cases by status">
       <button
         type="button"
@@ -105,7 +106,13 @@
       <p *ngIf="selectedFilter === 'all'">
         Cases will appear here when residents submit Found Pet reports marked as needing assistance.
       </p>
-      <p *ngIf="selectedFilter !== 'all'">
+      <p *ngIf="selectedFilter === 'pending'">
+        There are no pending assistance cases right now.
+      </p>
+      <p *ngIf="selectedFilter === 'rescued'">
+        No rescued animals have been recorded yet. A rescue requires a proof photo and an assistance note.
+      </p>
+      <p *ngIf="selectedFilter !== 'all' && selectedFilter !== 'pending' && selectedFilter !== 'rescued'">
         There are no cases with this status. Select another filter to view other cases.
       </p>
     </section>
@@ -143,7 +150,12 @@
         </span>
 
         <span class="assistance-case-bottom">
-          <small>Submitted {{ item.created_at | date:'MMM d, y' }}</small>
+          <small *ngIf="item.status === 'rescued' && item.rescued_at">
+            Rescued {{ item.rescued_at | date:'MMM d, y' }}<ng-container *ngIf="item.rescue_proof_path"> · Proof photo recorded</ng-container>
+          </small>
+          <small *ngIf="item.status !== 'rescued' || !item.rescued_at">
+            Submitted {{ item.created_at | date:'MMM d, y' }}
+          </small>
           <span class="assistance-case-detail-link">
             View Details
             <ion-icon name="chevron-forward-outline" aria-hidden="true"></ion-icon>
@@ -175,7 +187,7 @@
 
     <footer class="assistance-footer">
       <ion-icon name="paw-outline" aria-hidden="true"></ion-icon>
-      PawConnect · Veterinary Office
+      PawConnect · Municipal Veterinary Office
     </footer>
   </main>
 </ion-content>

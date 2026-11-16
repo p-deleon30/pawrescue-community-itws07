@@ -23,7 +23,7 @@ import { getApiBaseUrl } from '../../config/ip-config';
 
 // =====================================
 // PAWCONNECT - STAFF DASHBOARD
-//  Office Staff only.
+// Municipal Veterinary Office Staff only.
 // Its route must use staffGuard in app.routes.ts.
 // =====================================
 
@@ -31,7 +31,8 @@ type AssistanceStatus =
   | 'pending'
   | 'under_review'
   | 'in_progress'
-  | 'resolved';
+  | 'resolved'
+  | 'rescued';
 
 interface DashboardAssistanceCase {
   id: number;
@@ -54,8 +55,8 @@ interface GetCasesResponse {
 interface DashboardCounts {
   total: number | null;
   pending: number | null;
-  inProgress: number | null;
-  resolved: number | null;
+  rescued: number | null;
+  historical: number | null;
 }
 
 @Component({
@@ -82,8 +83,8 @@ export class StaffDashboardPage implements OnDestroy {
   counts: DashboardCounts = {
     total: null,
     pending: null,
-    inProgress: null,
-    resolved: null
+    rescued: null,
+    historical: null
   };
 
   recentCases: DashboardAssistanceCase[] = [];
@@ -145,8 +146,7 @@ export class StaffDashboardPage implements OnDestroy {
     this.dashboardSubscription = forkJoin({
       all: this.getCases('all', 5),
       pending: this.getCases('pending', 1),
-      inProgress: this.getCases('in_progress', 1),
-      resolved: this.getCases('resolved', 1)
+      rescued: this.getCases('rescued', 1)
     }).subscribe({
       next: (result) => {
         this.loading = false;
@@ -154,18 +154,23 @@ export class StaffDashboardPage implements OnDestroy {
         if (
           !result.all.success ||
           !result.pending.success ||
-          !result.inProgress.success ||
-          !result.resolved.success
+          !result.rescued.success
         ) {
           this.errorMessage = 'Unable to load the latest assistance cases.';
           return;
         }
 
+        // Historical records retain the old Under Review / In Progress /
+        // Resolved values. They are included in Total, but not Pending or
+        // Rescued; show them explicitly to avoid misleading counts.
+        const total = result.all.total;
+        const pending = result.pending.total;
+        const rescued = result.rescued.total;
         this.counts = {
-          total: result.all.total,
-          pending: result.pending.total,
-          inProgress: result.inProgress.total,
-          resolved: result.resolved.total
+          total,
+          pending,
+          rescued,
+          historical: Math.max(0, total - pending - rescued)
         };
 
         this.recentCases = Array.isArray(result.all.cases)
@@ -193,7 +198,7 @@ export class StaffDashboardPage implements OnDestroy {
     this.loadDashboard();
   }
 
-  // These pages/routes will be added after the staff dashboard files.
+  // Staff-only assistance management and details routes are already implemented.
   openAnimalAssistance(): void {
     void this.router.navigateByUrl('/staff-animal-assistance');
   }
@@ -212,6 +217,7 @@ export class StaffDashboardPage implements OnDestroy {
       case 'under_review': return 'Under Review';
       case 'in_progress': return 'In Progress';
       case 'resolved': return 'Resolved';
+      case 'rescued': return 'Rescued';
       default: return 'Unknown';
     }
   }

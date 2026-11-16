@@ -36,7 +36,8 @@ export type AssistanceStatus =
   | 'pending'
   | 'under_review'
   | 'in_progress'
-  | 'resolved';
+  | 'resolved'
+  | 'rescued';
 
 export type AssistanceFilter = AssistanceStatus | 'all';
 
@@ -49,6 +50,11 @@ export interface StaffAssistanceCase {
   staff_notes: string | null;
   reviewed_at: string | null;
   resolved_at: string | null;
+  // Rescue documentation is returned by the updated staff-only get_cases.php.
+  rescue_proof_path: string | null;
+  rescue_note: string | null;
+  rescued_at: string | null;
+  rescued_by_user_id: number | null;
   created_at: string;
   updated_at: string;
 
@@ -100,9 +106,7 @@ export class StaffAnimalAssistancePage implements OnDestroy {
   readonly filters: { value: AssistanceFilter; label: string }[] = [
     { value: 'all', label: 'All Cases' },
     { value: 'pending', label: 'Pending' },
-    { value: 'under_review', label: 'Under Review' },
-    { value: 'in_progress', label: 'In Progress' },
-    { value: 'resolved', label: 'Resolved' }
+    { value: 'rescued', label: 'Rescued' }
   ];
 
   selectedFilter: AssistanceFilter = 'all';
@@ -263,7 +267,8 @@ export class StaffAnimalAssistancePage implements OnDestroy {
       pending: 'Pending',
       under_review: 'Under Review',
       in_progress: 'In Progress',
-      resolved: 'Resolved'
+      resolved: 'Resolved',
+      rescued: 'Rescued'
     };
     return labels[status] || 'Unknown';
   }

@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -45,24 +46,40 @@ import type {
 // POST /animal_assistance/update_case.php
 // Route: /staff-animal-assistance/:id (protected by staffGuard)
 //
-// Companion HTML / SCSS will be updated separately for the edit form.
+// Rescue completion uses multipart/form-data with a required proof photo.
+// The matching HTML and SCSS will be updated one file at a time.
 // ============================================================
+
+// The management list still has the historical status type. This page
+// understands the new Rescued status without requiring an unrelated file edit.
+type CaseStatus = AssistanceStatus | 'rescued';
+type RescueAssistanceCase = Omit<StaffAssistanceCase, 'status'> & {
+  status: CaseStatus;
+  rescue_proof_path?: string | null;
+  rescue_note?: string | null;
+  rescued_at?: string | null;
+  rescued_by_user_id?: number | null;
+};
 
 interface GetCaseDetailsResponse {
   success: boolean;
   message: string;
   total: number;
-  cases: StaffAssistanceCase[];
+  cases: RescueAssistanceCase[];
 }
 
 interface UpdatedCaseResult {
   id: number;
   found_report_id: number;
-  previous_status: AssistanceStatus;
-  status: AssistanceStatus;
+  previous_status: CaseStatus;
+  status: CaseStatus;
   staff_notes: string | null;
   reviewed_at: string | null;
   resolved_at: string | null;
+  rescue_proof_path: string | null;
+  rescue_note: string | null;
+  rescued_at: string | null;
+  rescued_by_user_id: number | null;
   updated_at: string;
 }
 
@@ -72,11 +89,22 @@ interface UpdateCaseResponse {
   case: UpdatedCaseResult;
 }
 
-const NEXT_STATUS: Record<AssistanceStatus, AssistanceStatus | null> = {
-  pending: 'under_review',
-  under_review: 'in_progress',
-  in_progress: 'resolved',
-  resolved: null
+// Use Capacitor's native Browser bridge for external map links.
+// This does not add a TypeScript dependency on @capacitor/browser;
+// the matching native plugin must still be installed/synced in Android.
+interface NativeBrowserBridge {
+  open(options: { url: string }): Promise<void>;
+}
+const NativeBrowser = registerPlugin<NativeBrowserBridge>('Browser');
+
+// Newly submitted cases: Pending -> Rescued.
+// Legacy open cases can also be completed using the same proof requirement.
+const NEXT_STATUS: Record<CaseStatus, CaseStatus | null> = {
+  pending: 'rescued',
+  under_review: 'rescued',
+  in_progress: 'rescued',
+  resolved: null,
+  rescued: null
 };
 
 @Component({
@@ -103,17 +131,28 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
   private requestVersion = 0;
 
   caseId: number | null = null;
-  assistanceCase: StaffAssistanceCase | null = null;
+  assistanceCase: RescueAssistanceCase | null = null;
   photoUrl: string | null = null;
   loading = false;
   errorMessage = '';
   lastUpdated: Date | null = null;
 
-  // Staff edit form. The dropdown offers the CURRENT status and only
-  // its immediate next status; the PHP endpoint independently enforces
-  // this same status progression.
-  selectedStatus: AssistanceStatus = 'pending';
-  statusOptions: AssistanceStatus[] = [];
+  // Presentation-only state for the photo lightbox and external map link.
+  photoViewerOpen = false;
+  mapErrorMessage = '';
+
+  // Rescue evidence and preview for the selected case.
+  readonly maxRescueProofBytes = 5 * 1024 * 1024;
+  readonly rescueProofAccept = 'image/jpeg,image/png,image/webp';
+  rescueProofFile: File | null = null;
+  rescueProofPreviewUrl: string | null = null;
+  rescueProofUrl: string | null = null;
+  rescueProofViewerOpen = false;
+  rescueProofErrorMessage = '';
+
+  // Status options follow the server: current status or Rescued.
+  selectedStatus: CaseStatus = 'pending';
+  statusOptions: CaseStatus[] = [];
   assessmentNote = '';
   readonly maxAssessmentNoteLength = 2000;
   saving = false;
@@ -138,6 +177,103 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     });
   }
 
+  // A photo opens in a fitted on-page viewer, not as a raw image URL.
+  openPhotoViewer(): void {
+    if (this.photoUrl) {
+      this.photoViewerOpen = true;
+    }
+  }
+
+  closePhotoViewer(): void {
+    this.photoViewerOpen = false;
+  }
+
+  openRescueProofViewer(): void {
+    if (this.rescueProofUrl) {
+      this.rescueProofViewerOpen = true;
+    }
+  }
+
+  closeRescueProofViewer(): void {
+    this.rescueProofViewerOpen = false;
+  }
+
+  // Uses the phone's native file picker/camera choices through the HTML input.
+  // The server independently checks the MIME type and real image contents.
+  onRescueProofSelected(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files?.[0] ?? null;
+    this.clearRescueProofSelection();
+    this.rescueProofErrorMessage = '';
+    this.updateErrorMessage = '';
+
+    if (!file) {
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      this.rescueProofErrorMessage = 'Select a JPG, PNG, or WEBP rescue photo.';
+      if (input) input.value = '';
+      return;
+    }
+    if (file.size <= 0 || file.size > this.maxRescueProofBytes) {
+      this.rescueProofErrorMessage = 'Rescue proof photo must be 5 MB or smaller.';
+      if (input) input.value = '';
+      return;
+    }
+
+    this.rescueProofFile = file;
+    this.rescueProofPreviewUrl = URL.createObjectURL(file);
+  }
+
+  clearRescueProofSelection(input?: HTMLInputElement): void {
+    if (input) {
+      input.value = '';
+    }
+    if (this.rescueProofPreviewUrl) {
+      URL.revokeObjectURL(this.rescueProofPreviewUrl);
+    }
+    this.rescueProofFile = null;
+    this.rescueProofPreviewUrl = null;
+  }
+
+  // External Google Maps should not be opened by a target=_blank link
+  // inside a native Android WebView.
+  async viewLocationOnMap(item: RescueAssistanceCase): Promise<void> {
+    this.mapErrorMessage = '';
+
+    if (!this.hasCoordinates(item) ||
+        item.latitude! < -90 || item.latitude! > 90 ||
+        item.longitude! < -180 || item.longitude! > 180) {
+      this.mapErrorMessage = 'Valid GPS coordinates are not available for this case.';
+      return;
+    }
+
+    const url = 'https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent(`${item.latitude},${item.longitude}`);
+
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await NativeBrowser.open({ url });
+      } else {
+        const externalTab = window.open(url, '_blank');
+        if (!externalTab) {
+          this.mapErrorMessage = 'Your browser blocked Maps. Allow pop-ups and try again.';
+          return;
+        }
+        externalTab.opener = null;
+      }
+    } catch (error) {
+      console.warn('[PawConnect] Unable to open reported GPS coordinates in Maps:', error);
+      this.mapErrorMessage =
+        'Unable to open Maps. On Android, check that the Capacitor Browser plugin is installed and synced.';
+    }
+  }
+
+  ionViewWillLeave(): void {
+    this.closePhotoViewer();
+    this.closeRescueProofViewer();
+  }
+
   // Ionic may cache this component; refresh when staff return.
   ionViewWillEnter(): void {
     this.loadCase();
@@ -148,6 +284,10 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     if (this.saving) {
       return;
     }
+
+    this.closePhotoViewer();
+    this.closeRescueProofViewer();
+    this.mapErrorMessage = '';
 
     const idParam = this.route.snapshot.paramMap.get('id');
     const parsedId = idParam && /^\d+$/.test(idParam)
@@ -162,6 +302,8 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
       this.caseId = null;
       this.assistanceCase = null;
       this.photoUrl = null;
+      this.rescueProofUrl = null;
+      this.clearRescueProofSelection();
       this.loading = false;
       this.statusOptions = [];
       return;
@@ -180,6 +322,8 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     if (this.caseId !== parsedId) {
       this.assistanceCase = null;
       this.photoUrl = null;
+      this.rescueProofUrl = null;
+      this.clearRescueProofSelection();
       this.statusOptions = [];
       this.assessmentNote = '';
     }
@@ -218,6 +362,8 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
         if (!item) {
           this.assistanceCase = null;
           this.photoUrl = null;
+          this.rescueProofUrl = null;
+          this.clearRescueProofSelection();
           this.statusOptions = [];
           this.errorMessage = 'This assistance case was not found.';
           return;
@@ -225,6 +371,7 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
 
         this.assistanceCase = item;
         this.photoUrl = this.resolvePhotoUrl(item.photo_path);
+        this.rescueProofUrl = this.resolveRescueProofUrl(item.rescue_proof_path ?? null);
         this.lastUpdated = new Date();
         this.resetEditor(item.status);
       },
@@ -236,6 +383,8 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
         this.loading = false;
         this.assistanceCase = null;
         this.photoUrl = null;
+        this.rescueProofUrl = null;
+        this.clearRescueProofSelection();
         this.statusOptions = [];
 
         // Keep the staff-only route protected by staffGuard, but do not
@@ -277,9 +426,11 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     void this.router.navigateByUrl('/staff-animal-assistance');
   }
 
-  private resetEditor(status: AssistanceStatus): void {
+  private resetEditor(status: CaseStatus): void {
     this.selectedStatus = status;
     this.assessmentNote = '';
+    this.clearRescueProofSelection();
+    this.rescueProofErrorMessage = '';
     this.statusOptions = [status];
     const next = NEXT_STATUS[status];
     if (next) {
@@ -308,8 +459,9 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
       return false;
     }
 
-    // Required by the PHP endpoint when moving to Resolved.
-    if (changedStatus && this.selectedStatus === 'resolved' && !note) {
+    // Both a description and a photo are mandatory for completion.
+    if (changedStatus && this.selectedStatus === 'rescued' &&
+        (!note || !this.rescueProofFile)) {
       return false;
     }
 
@@ -319,6 +471,7 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
   saveCaseUpdate(): void {
     this.updateErrorMessage = '';
     this.updateSuccessMessage = '';
+    this.rescueProofErrorMessage = '';
 
     const item = this.assistanceCase;
     const token = this.authService.getToken();
@@ -347,8 +500,13 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
       this.updateErrorMessage = 'Enter an assessment note or select the next status.';
       return;
     }
-    if (changedStatus && this.selectedStatus === 'resolved' && !note) {
-      this.updateErrorMessage = 'Add a resolution note before marking this case as Resolved.';
+    const completingRescue = changedStatus && this.selectedStatus === 'rescued';
+    if (completingRescue && !note) {
+      this.updateErrorMessage = 'Describe the rescue or assistance before marking this case Rescued.';
+      return;
+    }
+    if (completingRescue && !this.rescueProofFile) {
+      this.rescueProofErrorMessage = 'Attach one rescue proof photo before marking this case Rescued.';
       return;
     }
 
@@ -357,13 +515,28 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     const requestedVersion = this.requestVersion;
     const headers = new HttpHeaders({ Authorization: `Bearer ${token}` });
 
-    this.updateSubscription = this.http.post<UpdateCaseResponse>(
-      this.updateEndpoint,
-      {
+    // Do not manually set Content-Type for FormData; the browser supplies
+    // multipart/form-data with its required boundary.
+    let requestBody: FormData | { case_id: number; status: CaseStatus; staff_note: string };
+    if (completingRescue) {
+      const formData = new FormData();
+      formData.append('case_id', String(requestedCaseId));
+      formData.append('status', 'rescued');
+      formData.append('staff_note', note);
+      formData.append('rescue_proof', this.rescueProofFile!, this.rescueProofFile!.name);
+      requestBody = formData;
+    } else {
+      // Existing note-only requests remain JSON for backward compatibility.
+      requestBody = {
         case_id: requestedCaseId,
         status: this.selectedStatus,
         staff_note: note
-      },
+      };
+    }
+
+    this.updateSubscription = this.http.post<UpdateCaseResponse>(
+      this.updateEndpoint,
+      requestBody,
       { headers }
     ).subscribe({
       next: (response) => {
@@ -387,8 +560,13 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
           staff_notes: result.staff_notes,
           reviewed_at: result.reviewed_at,
           resolved_at: result.resolved_at,
+          rescue_proof_path: result.rescue_proof_path,
+          rescue_note: result.rescue_note,
+          rescued_at: result.rescued_at,
+          rescued_by_user_id: result.rescued_by_user_id,
           updated_at: result.updated_at
         };
+        this.rescueProofUrl = this.resolveRescueProofUrl(result.rescue_proof_path);
         this.lastUpdated = new Date();
         this.resetEditor(result.status);
         this.updateSuccessMessage = response.message || 'Case updated successfully.';
@@ -420,7 +598,7 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
           this.updateErrorMessage = typeof serverMessage === 'string'
             ? `${serverMessage} Refresh this case before trying again.`
             : 'The case may have changed. Refresh it and try again.';
-        } else if (error.status === 400 && typeof serverMessage === 'string') {
+        } else if ([400, 413, 415].includes(error.status) && typeof serverMessage === 'string') {
           this.updateErrorMessage = serverMessage;
         } else if (error.status === 0) {
           this.updateErrorMessage =
@@ -433,7 +611,7 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     });
   }
 
-  getAnimalName(item: StaffAssistanceCase): string {
+  getAnimalName(item: RescueAssistanceCase): string {
     const petName = item.pet_name?.trim();
     if (petName) {
       return petName;
@@ -443,16 +621,17 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
       : 'Found Dog';
   }
 
-  getAnimalType(item: StaffAssistanceCase): string {
+  getAnimalType(item: RescueAssistanceCase): string {
     return item.animal_type?.toLowerCase() === 'cat' ? 'Cat' : 'Dog';
   }
 
-  getStatusLabel(status: AssistanceStatus): string {
-    const labels: Record<AssistanceStatus, string> = {
+  getStatusLabel(status: CaseStatus): string {
+    const labels: Record<CaseStatus, string> = {
       pending: 'Pending',
       under_review: 'Under Review',
       in_progress: 'In Progress',
-      resolved: 'Resolved'
+      resolved: 'Resolved',
+      rescued: 'Rescued'
     };
     return labels[status] || 'Unknown';
   }
@@ -462,7 +641,7 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
       injured: 'Injured',
       sick: 'Sick',
       trapped: 'Trapped',
-      aggressive: 'Safety Concern',
+      aggressive: 'Safety Concern'  ,
       abandoned: 'Possibly Abandoned',
       roaming: 'Roaming / Unattended',
       other: 'Other Concern'
@@ -470,7 +649,7 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     return labels[reason] || 'Animal Assistance';
   }
 
-  hasCoordinates(item: StaffAssistanceCase): boolean {
+  hasCoordinates(item: RescueAssistanceCase): boolean {
     return item.latitude !== null && item.longitude !== null &&
       Number.isFinite(item.latitude) && Number.isFinite(item.longitude);
   }
@@ -497,7 +676,22 @@ export class StaffAssistanceDetailsPage implements OnDestroy {
     return `${this.apiBaseUrl}/uploads/pets/${match[1]}`;
   }
 
+  // The server returns a relative path, never a trusted arbitrary URL.
+  private resolveRescueProofUrl(proofPath: string | null): string | null {
+    if (!proofPath || typeof proofPath !== 'string') {
+      return null;
+    }
+    const normalized = proofPath.trim().replace(/\\/g, '/');
+    const match = normalized.match(
+      /(?:^|\/)uploads\/rescue_proofs\/([a-f0-9]{32}\.(?:jpg|jpeg|png|webp))$/i
+    );
+    return match ? `${this.apiBaseUrl}/uploads/rescue_proofs/${match[1]}` : null;
+  }
+
   ngOnDestroy(): void {
+    this.clearRescueProofSelection();
+    this.closeRescueProofViewer();
+    this.closePhotoViewer();
     this.requestVersion++;
     this.caseSubscription?.unsubscribe();
     this.updateSubscription?.unsubscribe();

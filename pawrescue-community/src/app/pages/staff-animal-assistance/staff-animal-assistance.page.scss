@@ -1,5 +1,5 @@
 // ============================================================
-// PAWCONNECT — VETERINARY OFFICE
+// PAWCONNECT — MUNICIPAL VETERINARY OFFICE
 // Staff Animal Assistance Management — mobile-first case list
 // Matches staff-animal-assistance.page.html and .page.ts
 // ============================================================
@@ -400,6 +400,7 @@ ion-content.staff-assistance-content {
   &.status-pending { color: #986314; background: #fff3df; }
   &.status-under_review { color: #236b9e; background: #e9f3fb; }
   &.status-in_progress { color: #79509c; background: #f1eafa; }
+  &.status-rescued { color: #166b47; background: #def4e6; }
   &.status-resolved { color: #22734d; background: #e7f5ec; }
 }
 
